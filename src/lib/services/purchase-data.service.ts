@@ -1,5 +1,5 @@
 import { createClient as createServerClient, createServiceClient } from '@/lib/supabase/server';
-import { UserPurchase, PurchaseData } from '@/lib/types';
+import { UserPurchase, PurchaseItemsData, ProcessingStatus } from '@/lib/types';
 
 export class PurchaseDataService {
   private serviceClient;
@@ -13,7 +13,7 @@ export class PurchaseDataService {
   }
 
   /**
-   * Get all purchases for a user (including expired)
+   * Get all purchases for a user (including processing/failed)
    */
   async getUserPurchases(clerkId: string): Promise<UserPurchase[]> {
     const supabase = await this.getSupabaseClient();
@@ -37,9 +37,9 @@ export class PurchaseDataService {
   }
 
   /**
-   * Get only active (non-expired) purchases for a user
+   * Get only completed purchases for a user
    */
-  async getActivePurchases(clerkId: string): Promise<UserPurchase[]> {
+  async getCompletedPurchases(clerkId: string): Promise<UserPurchase[]> {
     const supabase = await this.getSupabaseClient();
 
     try {
@@ -47,8 +47,7 @@ export class PurchaseDataService {
         .from('user_purchases')
         .select('*')
         .eq('clerk_id', clerkId)
-        .eq('enrollment_status', 'completed')
-        .gte('expires_at', new Date().toISOString())
+        .eq('processing_status', 'completed')
         .order('purchased_at', { ascending: false });
 
       if (error) {
@@ -57,15 +56,15 @@ export class PurchaseDataService {
 
       return data || [];
     } catch (error) {
-      console.error('Error fetching active purchases:', error);
+      console.error('Error fetching completed purchases:', error);
       throw error;
     }
   }
 
   /**
-   * Get expired purchases for a user
+   * Get processing purchases for a user
    */
-  async getExpiredPurchases(clerkId: string): Promise<UserPurchase[]> {
+  async getProcessingPurchases(clerkId: string): Promise<UserPurchase[]> {
     const supabase = await this.getSupabaseClient();
 
     try {
@@ -73,7 +72,7 @@ export class PurchaseDataService {
         .from('user_purchases')
         .select('*')
         .eq('clerk_id', clerkId)
-        .lt('expires_at', new Date().toISOString())
+        .in('processing_status', ['pending', 'processing'])
         .order('purchased_at', { ascending: false });
 
       if (error) {
@@ -82,7 +81,7 @@ export class PurchaseDataService {
 
       return data || [];
     } catch (error) {
-      console.error('Error fetching expired purchases:', error);
+      console.error('Error fetching processing purchases:', error);
       throw error;
     }
   }
@@ -118,21 +117,28 @@ export class PurchaseDataService {
    */
   async createPurchase(purchaseData: {
     clerk_id: string;
+    stripe_session_id: string;
+    stripe_payment_intent_id?: string;
+    stripe_customer_id?: string;
     purchase_type: string;
-    item_id: string;
-    enrollment_id: string | null;
-    purchase_data: PurchaseData;
-    expires_at: string;
+    amount_paid: number;
+    currency: string;
+    items_purchased: PurchaseItemsData;
+    processing_status?: ProcessingStatus;
   }): Promise<UserPurchase> {
     try {
       const { data, error } = await this.serviceClient
         .from('user_purchases')
         .insert({
           ...purchaseData,
-          enrollment_status: 'completed',
+          processing_status: purchaseData.processing_status || 'pending',
           purchased_at: new Date().toISOString(),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
+          queue_metadata: {
+            created_from: 'purchase_service',
+            created_at: new Date().toISOString(),
+          },
         })
         .select()
         .single();
@@ -153,15 +159,28 @@ export class PurchaseDataService {
    */
   async updatePurchaseStatus(
     purchaseId: string, 
-    status: 'pending' | 'completed' | 'failed'
+    status: ProcessingStatus,
+    queueMetadata?: Record<string, any>
   ): Promise<UserPurchase> {
     try {
+      const updateData: any = {
+        processing_status: status,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (queueMetadata) {
+        updateData.queue_metadata = queueMetadata;
+      }
+
+      if (status === 'processing') {
+        updateData.processing_started_at = new Date().toISOString();
+      } else if (['completed', 'failed', 'partial'].includes(status)) {
+        updateData.processing_completed_at = new Date().toISOString();
+      }
+
       const { data, error } = await this.serviceClient
         .from('user_purchases')
-        .update({
-          enrollment_status: status,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('id', purchaseId)
         .select()
         .single();
@@ -182,8 +201,9 @@ export class PurchaseDataService {
    */
   async getUserPurchaseStats(clerkId: string): Promise<{
     totalPurchases: number;
-    activePurchases: number;
-    expiredPurchases: number;
+    completedPurchases: number;
+    processingPurchases: number;
+    failedPurchases: number;
     totalSpent: number;
     averageOrderValue: number;
   }> {
@@ -192,7 +212,7 @@ export class PurchaseDataService {
     try {
       const { data, error } = await supabase
         .from('user_purchases')
-        .select('purchase_data, expires_at')
+        .select('amount_paid, processing_status')
         .eq('clerk_id', clerkId);
 
       if (error) {
@@ -200,22 +220,23 @@ export class PurchaseDataService {
       }
 
       const purchases = data || [];
-      const now = new Date().toISOString();
       
       const totalPurchases = purchases.length;
-      const activePurchases = purchases.filter(p => p.expires_at > now).length;
-      const expiredPurchases = totalPurchases - activePurchases;
+      const completedPurchases = purchases.filter(p => p.processing_status === 'completed').length;
+      const processingPurchases = purchases.filter(p => ['pending', 'processing'].includes(p.processing_status)).length;
+      const failedPurchases = purchases.filter(p => p.processing_status === 'failed').length;
       
-      const totalSpent = purchases.reduce((sum, purchase) => {
-        return sum + (purchase.purchase_data?.amount_paid || 0);
-      }, 0);
+      const totalSpent = purchases
+        .filter(p => p.processing_status === 'completed')
+        .reduce((sum, purchase) => sum + purchase.amount_paid, 0);
       
-      const averageOrderValue = totalPurchases > 0 ? totalSpent / totalPurchases : 0;
+      const averageOrderValue = completedPurchases > 0 ? totalSpent / completedPurchases : 0;
 
       return {
         totalPurchases,
-        activePurchases,
-        expiredPurchases,
+        completedPurchases,
+        processingPurchases,
+        failedPurchases,
         totalSpent,
         averageOrderValue: Math.round(averageOrderValue * 100) / 100,
       };
@@ -226,9 +247,9 @@ export class PurchaseDataService {
   }
 
   /**
-   * Check if user has purchased specific item (course or bundle)
+   * Check if user has completed purchase for specific item
    */
-  async hasPurchased(clerkId: string, itemId: string, itemType: 'course' | 'bundle'): Promise<boolean> {
+  async hasCompletedPurchase(clerkId: string, itemId: string): Promise<boolean> {
     const supabase = await this.getSupabaseClient();
 
     try {
@@ -236,10 +257,8 @@ export class PurchaseDataService {
         .from('user_purchases')
         .select('id')
         .eq('clerk_id', clerkId)
-        .eq('item_id', itemId)
-        .eq('purchase_type', itemType)
-        .eq('enrollment_status', 'completed')
-        .gte('expires_at', new Date().toISOString())
+        .eq('processing_status', 'completed')
+        .or(`items_purchased->'courses'@>?[{"course_id":"${itemId}"}],items_purchased->'bundles'@>?[{"bundle_id":"${itemId}"}]`)
         .limit(1);
 
       if (error) {
@@ -248,29 +267,21 @@ export class PurchaseDataService {
 
       return (data?.length || 0) > 0;
     } catch (error) {
-      console.error('Error checking purchase:', error);
+      console.error('Error checking completed purchase:', error);
       return false;
     }
   }
 
   /**
-   * Get purchases expiring soon (within specified days)
+   * Get pending purchases for queue processing
    */
-  async getPurchasesExpiringSoon(clerkId: string, daysAhead: number = 30): Promise<UserPurchase[]> {
-    const supabase = await this.getSupabaseClient();
-    
-    const futureDate = new Date();
-    futureDate.setDate(futureDate.getDate() + daysAhead);
-
+  async getPendingPurchases(): Promise<UserPurchase[]> {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await this.serviceClient
         .from('user_purchases')
         .select('*')
-        .eq('clerk_id', clerkId)
-        .eq('enrollment_status', 'completed')
-        .gte('expires_at', new Date().toISOString())
-        .lte('expires_at', futureDate.toISOString())
-        .order('expires_at', { ascending: true });
+        .eq('processing_status', 'pending')
+        .order('purchased_at', { ascending: true });
 
       if (error) {
         throw error;
@@ -278,18 +289,8 @@ export class PurchaseDataService {
 
       return data || [];
     } catch (error) {
-      console.error('Error fetching expiring purchases:', error);
+      console.error('Error fetching pending purchases:', error);
       throw error;
     }
-  }
-
-  /**
-   * Calculate expiry date based on validity months and purchase type
-   */
-  calculateExpiryDate(validityMonths: number, purchaseDate?: Date): string {
-    const baseDate = purchaseDate || new Date();
-    const expiryDate = new Date(baseDate);
-    expiryDate.setMonth(expiryDate.getMonth() + validityMonths);
-    return expiryDate.toISOString();
   }
 }
