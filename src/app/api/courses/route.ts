@@ -1,3 +1,4 @@
+// src/app/api/courses/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { CourseDataService } from '@/lib/services/course-data.service';
@@ -31,8 +32,8 @@ export async function GET(request: NextRequest) {
       courses = await courseService.getAllCourses(filters);
     }
 
-    // Include enrollment status if requested and user is authenticated
-    let coursesWithEnrollment: CourseWithEnrollment[] = courses;
+    // Always create CourseWithEnrollment array, with or without enrollment data
+    let coursesWithEnrollment: CourseWithEnrollment[];
     
     if (includeEnrollmentStatus && userId) {
       const purchaseService = new PurchaseTrackingService();
@@ -51,6 +52,15 @@ export async function GET(request: NextRequest) {
           bundle_id: accessInfo?.bundle_id || null,
         };
       });
+    } else {
+      // Map courses to CourseWithEnrollment format with default values
+      coursesWithEnrollment = courses.map(course => ({
+        ...course,
+        user_owns: false,
+        ownership_type: 'none' as const,
+        expires_at: null,
+        bundle_id: null,
+      }));
     }
 
     // Prepare response
