@@ -410,17 +410,10 @@ export interface CourseFilters {
   category?: CourseCategory;
   series?: string;
   tags?: string[];
-  difficulty?: CourseMetadata['difficulty'];
-  minPrice?: number;
-  maxPrice?: number;
 }
 
 export interface BundleFilters {
   bundle_type?: BundleType;
-  featured?: boolean;
-  minPrice?: number;
-  maxPrice?: number;
-  courseCount?: number;
 }
 
 // ========================================
