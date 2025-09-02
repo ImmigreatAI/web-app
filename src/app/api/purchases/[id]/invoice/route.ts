@@ -5,7 +5,7 @@ import { PurchaseTrackingService } from '@/lib/services/purchase-tracking-servic
 import Stripe from 'stripe';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-08-27.basil', // Updated to latest stable API version
+  apiVersion: '2025-08-27.basil',
 });
 
 interface RouteParams {

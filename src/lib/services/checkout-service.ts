@@ -10,7 +10,7 @@ import {
 } from '@/lib/types';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2025-08-27.basil',
+  apiVersion: '2024-06-20',
 });
 
 // NOTE: We rely on the imported types (CheckoutSessionRequest, CheckoutSessionResponse, PurchaseItemsData).
@@ -30,31 +30,62 @@ export class CheckoutService {
     userEmail,
     userName,
     cartData,
+    singleItem,
     successUrl,
     cancelUrl,
   }: CheckoutSessionRequest): Promise<CheckoutSessionResponse> {
     try {
+      // Support both Buy Now (singleItem) and Cart checkout (cartData)
+      let effectiveCart: CartData | undefined = cartData;
+
+      if (!effectiveCart && singleItem) {
+        // Hydrate a minimal cart from the single item
+        const hydratedItem: CartItem = {
+          id: singleItem.id,
+          type: singleItem.type,
+          title: singleItem.title,
+          thumbnail_url: singleItem.thumbnailUrl ?? null,
+          original_price: singleItem.price,
+          price: singleItem.price,
+          enrollment_id: singleItem.enrollmentId,
+          validity_months: singleItem.type === 'course' ? 3 : singleItem.validityMonths,
+        };
+
+        effectiveCart = {
+          items: [hydratedItem],
+          summary: {
+            subtotal: hydratedItem.original_price,
+            discount_amount: 0,
+            total: hydratedItem.price,
+            byob_tier: null,
+          },
+        };
+      }
+
       // Validate cart data (handle possibly-undefined)
-      if (!cartData || !cartData.items || cartData.items.length === 0) {
+      if (!effectiveCart || !effectiveCart.items || effectiveCart.items.length === 0) {
         throw new Error('Cart is empty');
       }
 
-      if (!cartData.summary) {
+      if (!effectiveCart.summary) {
         throw new Error('Cart summary is missing');
       }
 
+      // Resolve final enrollment IDs and validity for course items
+      const resolvedCart = await this.resolveFinalCartData(effectiveCart);
+
       // Pre-create purchase record to get ID for tracking
-      const purchaseType = this.determinePurchaseType(cartData.items);
-      const purchaseId = await this.createPendingPurchase(clerkId, cartData, purchaseType);
+      const purchaseType = this.determinePurchaseType(resolvedCart.items);
+      const purchaseId = await this.createPendingPurchase(clerkId, resolvedCart, purchaseType);
 
       // Prepare line items for Stripe
-      const lineItems = this.createStripeLineItems(cartData.items);
+      const lineItems = this.createStripeLineItems(resolvedCart.items);
 
       // Prepare metadata for the session
       const metadata = this.attachMetadata({
         clerkId,
         purchaseId,
-        cartData,
+        cartData: resolvedCart,
       });
 
       // Create Stripe checkout session
@@ -94,6 +125,61 @@ export class CheckoutService {
       console.error('Error creating checkout session:', error);
       throw error;
     }
+  }
+
+  /**
+   * Resolve final validity and enrollment IDs for course items using BYOB rules
+   */
+  private async resolveFinalCartData(cartData: CartData): Promise<CartData> {
+    const items = cartData.items;
+
+    const courseItems = items.filter((i) => i.type === 'course');
+    const bundleItems = items.filter((i) => i.type === 'bundle');
+
+    const courseCount = courseItems.length;
+    const validityMonths = courseCount >= 10 ? 9 : courseCount >= 5 ? 6 : 3;
+
+    if (courseItems.length === 0) {
+      // No courses, return as-is
+      return cartData;
+    }
+
+    // Fetch enrollment_ids for all course IDs
+    const courseIds = courseItems.map((i) => i.id);
+    const { data: courses, error } = await this.supabaseAdmin
+      .from('courses')
+      .select('id, enrollment_ids')
+      .in('id', courseIds);
+
+    if (error) {
+      throw error;
+    }
+
+    const enrollmentMap = new Map<string, { three_month: string; six_month: string; nine_month: string }>();
+    (courses || []).forEach((c: any) => {
+      if (c?.id && c?.enrollment_ids) {
+        enrollmentMap.set(c.id, c.enrollment_ids);
+      }
+    });
+
+    const updatedCourseItems: CartItem[] = courseItems.map((item) => {
+      const ids = enrollmentMap.get(item.id);
+      let newEnrollmentId = item.enrollment_id;
+      if (ids) {
+        newEnrollmentId = validityMonths === 9 ? ids.nine_month : validityMonths === 6 ? ids.six_month : ids.three_month;
+      }
+
+      return {
+        ...item,
+        validity_months: validityMonths,
+        enrollment_id: newEnrollmentId,
+      };
+    });
+
+    return {
+      ...cartData,
+      items: [...updatedCourseItems, ...bundleItems],
+    };
   }
 
   /**
