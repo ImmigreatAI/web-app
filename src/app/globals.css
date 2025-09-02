@@ -236,6 +236,20 @@ main {
   animation: slideUp 0.4s ease-out;
 }
 
+.cl-modalBackdrop {
+  background-color: rgba(246, 225, 171, 0.045) !important;
+  backdrop-filter: blur(4px) !important;
+}
+
+.cl-modalContent {
+  z-index: 9999 !important;
+}
+
+/* Ensure modal is above navigation */
+.cl-rootBox {
+  z-index: 10000 !important;
+  background-color: #fffbeb;
+}
 @keyframes fadeIn {
   from {
     opacity: 0;

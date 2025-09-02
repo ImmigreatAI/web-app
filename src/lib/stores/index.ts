@@ -189,8 +189,8 @@ export const useFilteredContent = (type: 'courses' | 'bundles') => {
     isLoading,
     hasActiveFilters: uiState.hasActiveFilters(type),
     activeFilterCount: uiState.getActiveFilterCount(type),
-    viewMode: filters.viewMode,
-    sortBy: filters.sortBy,
+    // viewMode: filters.viewMode,
+    // sortBy: filters.sortBy,
     searchTerm: filters.searchTerm,
   };
 };

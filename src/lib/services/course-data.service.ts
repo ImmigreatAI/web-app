@@ -29,9 +29,7 @@ export class CourseDataService {
       query = query.eq('series', filters.series);
     }
 
-    if (filters?.difficulty) {
-      query = query.eq('metadata->>difficulty', filters.difficulty);
-    }
+    // Difficulty filter removed per updated requirements
 
     if (filters?.tags && filters.tags.length > 0) {
       // Filter by tags in metadata
@@ -40,13 +38,7 @@ export class CourseDataService {
       }
     }
 
-    if (filters?.minPrice) {
-      query = query.gte('pricing->base_price', filters.minPrice);
-    }
-
-    if (filters?.maxPrice) {
-      query = query.lte('pricing->base_price', filters.maxPrice);
-    }
+    // Price-based filters removed per updated requirements
 
     const { data, error } = await query;
     
