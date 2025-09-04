@@ -1,15 +1,48 @@
-// src/lib/stores/ui-store.ts
+// src/lib/stores/ui-store.ts - Updated for SSG with client-side filtering
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import { CourseCategory, CourseFilters, BundleFilters } from '@/lib/types';
+import { CourseCategory, Course, Bundle } from '@/lib/types';
 
 // ========================================
-// TYPES
+// SIMPLIFIED TYPES FOR CLIENT-SIDE FILTERING
 // ========================================
+
+interface ClientSideFilters {
+  // Course Filters - Simplified for client-side
+  courseFilters: {
+    category?: CourseCategory;
+    series?: string;
+    tags?: string[];
+    searchTerm: string;
+  };
+  
+  // Bundle Filters - Simplified for client-side
+  bundleFilters: {
+    bundle_type?: string;
+    category?: string; // Category based on contained courses
+    searchTerm: string;
+  };
+}
+
+interface PreloadedData {
+  // Static data loaded from SSG
+  courses: Course[];
+  bundles: Bundle[];
+  
+  // Filter options computed from static data
+  availableCategories: CourseCategory[];
+  availableSeriesByCategory: Record<CourseCategory, string[]>;
+  availableTagsByCategory: Record<CourseCategory, string[]>;
+  availableBundleTypes: string[];
+  
+  // Loading state for initial data hydration
+  isDataLoaded: boolean;
+  dataLoadError: string | null;
+}
 
 interface UIState {
   // ========================================
-  // DRAWER & MODAL STATES
+  // DRAWER & MODAL STATES (Unchanged)
   // ========================================
   
   // Cart Drawer
@@ -35,7 +68,7 @@ interface UIState {
   };
 
   // ========================================
-  // NAVIGATION & PAGE STATE
+  // NAVIGATION & PAGE STATE (Unchanged)
   // ========================================
   
   // Current Page Context
@@ -44,67 +77,54 @@ interface UIState {
   
   // Mobile Navigation
   isMobileMenuOpen: boolean;
-  
-  // Page Loading States
-  pageLoading: {
-    courses: boolean;
-    bundles: boolean;
-    purchases: boolean;
-    enrollments: boolean;
-  };
 
   // ========================================
-  // FILTER STATES
+  // SIMPLIFIED CLIENT-SIDE FILTERING
   // ========================================
   
-  // Course Filters
-  courseFilters: CourseFilters & {
-    searchTerm: string;
-  };
+  // Pre-loaded static data for client-side operations
+  preloadedData: PreloadedData;
   
-  // Bundle Filters
-  bundleFilters: BundleFilters & {
-    searchTerm: string;
-  };
+  // Client-side filters (no API calls)
+  courseFilters: ClientSideFilters['courseFilters'];
+  bundleFilters: ClientSideFilters['bundleFilters'];
   
-  // Active Course Tab
+  // Active tabs
   activeCourseTab: 'courses' | 'bundles';
   activeCategoryTab: CourseCategory;
   
-  // Filter Panel State
+  // Filter panel state
   isFilterPanelOpen: boolean;
   isFilterPanelExpanded: boolean;
 
   // ========================================
-  // LOADING & ERROR STATES
+  // USER-SPECIFIC LOADING STATES (Keep for authenticated operations)
   // ========================================
   
-  // Global Loading State
+  // Loading states for user-specific operations only
+  userOperationLoading: {
+    cart: boolean;
+    purchases: boolean;
+    enrollments: boolean;
+    profile: boolean;
+  };
+  
+  // Global loading for user operations
   globalLoading: {
     message: string;
     isLoading: boolean;
   };
   
-  // Toast Notifications State
-  toastQueue: Array<{
-    id: string;
-    type: 'success' | 'error' | 'warning' | 'info';
-    title: string;
-    description?: string;
-    duration?: number;
-  }>;
-  
-  // Error States
+  // Error states
   errors: {
     global?: string;
-    courses?: string;
-    bundles?: string;
     cart?: string;
     checkout?: string;
+    userOperation?: string;
   };
 
   // ========================================
-  // USER INTERFACE PREFERENCES
+  // USER INTERFACE PREFERENCES (Unchanged)
   // ========================================
   
   // Theme & Display
@@ -123,7 +143,7 @@ interface UIState {
   };
 
   // ========================================
-  // ACTIONS - DRAWER & MODAL MANAGEMENT
+  // ACTIONS - DRAWER & MODAL MANAGEMENT (Unchanged)
   // ========================================
   
   // Cart Drawer
@@ -142,15 +162,19 @@ interface UIState {
   closeMobileMenu: () => void;
 
   // ========================================
-  // ACTIONS - FILTER MANAGEMENT
+  // ACTIONS - SIMPLIFIED CLIENT-SIDE FILTERING
   // ========================================
   
-  // Course Filters
+  // Pre-loaded data management
+  setPreloadedData: (data: Partial<PreloadedData>) => void;
+  setDataLoaded: (loaded: boolean) => void;
+  setDataLoadError: (error: string | null) => void;
+  
+  // Client-side filter actions (no API calls)
   setCourseFilter: <K extends keyof UIState['courseFilters']>(key: K, value: UIState['courseFilters'][K]) => void;
   resetCourseFilters: () => void;
   setCourseSearchTerm: (term: string) => void;
   
-  // Bundle Filters
   setBundleFilter: <K extends keyof UIState['bundleFilters']>(key: K, value: UIState['bundleFilters'][K]) => void;
   resetBundleFilters: () => void;
   setBundleSearchTerm: (term: string) => void;
@@ -164,15 +188,15 @@ interface UIState {
   setFilterPanelExpanded: (expanded: boolean) => void;
 
   // ========================================
-  // ACTIONS - PAGE & LOADING MANAGEMENT
+  // ACTIONS - PAGE & LOADING MANAGEMENT (Simplified)
   // ========================================
   
   // Page Management
   setCurrentPage: (page: UIState['currentPage']) => void;
   goBack: () => void;
   
-  // Loading States
-  setPageLoading: (page: keyof UIState['pageLoading'], loading: boolean) => void;
+  // User operation loading states (no public page loading)
+  setUserOperationLoading: (operation: keyof UIState['userOperationLoading'], loading: boolean) => void;
   setGlobalLoading: (loading: boolean, message?: string) => void;
   
   // Error Management
@@ -181,31 +205,32 @@ interface UIState {
   clearError: (errorType: keyof UIState['errors']) => void;
 
   // ========================================
-  // ACTIONS - PREFERENCES
+  // ACTIONS - PREFERENCES (Unchanged)
   // ========================================
   
-  // Theme & Display
   setTheme: (theme: UIState['theme']) => void;
   toggleSidebar: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
-  
-  // Accessibility
   setReducedMotion: (reduced: boolean) => void;
   setFontSize: (size: UIState['fontSize']) => void;
-  
-  // Features
   toggleFeature: (feature: keyof UIState['features']) => void;
   setFeature: (feature: keyof UIState['features'], enabled: boolean) => void;
 
   // ========================================
-  // UTILITIES
+  // UTILITIES - SIMPLIFIED FOR CLIENT-SIDE
   // ========================================
   
-  // State Utilities
+  // Client-side filtering utilities
+  getFilteredCourses: () => Course[];
+  getFilteredBundles: () => Bundle[];
   hasActiveFilters: (type: 'courses' | 'bundles') => boolean;
   getActiveFilterCount: (type: 'courses' | 'bundles') => number;
   isModalOpen: (modalType?: keyof UIState['modals']) => boolean;
   hasErrors: () => boolean;
+  
+  // Get available filter options for current data
+  getAvailableSeriesForCategory: (category: CourseCategory) => string[];
+  getAvailableTagsForCategory: (category: CourseCategory) => string[];
 }
 
 // ========================================
@@ -221,11 +246,123 @@ const initialCourseFilters: UIState['courseFilters'] = {
 
 const initialBundleFilters: UIState['bundleFilters'] = {
   bundle_type: undefined,
+  category: undefined,
   searchTerm: '',
 };
 
+const initialPreloadedData: PreloadedData = {
+  courses: [],
+  bundles: [],
+  availableCategories: [],
+  availableSeriesByCategory: {} as Record<CourseCategory, string[]>,
+  availableTagsByCategory: {} as Record<CourseCategory, string[]>,
+  availableBundleTypes: [],
+  isDataLoaded: false,
+  dataLoadError: null,
+};
+
 // ========================================
-// UI STORE
+// CLIENT-SIDE FILTERING UTILITIES
+// ========================================
+
+function filterCourses(
+  courses: Course[],
+  filters: UIState['courseFilters']
+): Course[] {
+  let filtered = [...courses];
+
+  // Apply category filter
+  if (filters.category) {
+    filtered = filtered.filter(course => course.category === filters.category);
+  }
+
+  // Apply series filter
+  if (filters.series) {
+    filtered = filtered.filter(course => course.series === filters.series);
+  }
+
+  // Apply tags filter
+  if (filters.tags && filters.tags.length > 0) {
+    filtered = filtered.filter(course => {
+      const courseTags = course.metadata?.tags || [];
+      return filters.tags!.some(tag => courseTags.includes(tag));
+    });
+  }
+
+  // Apply search filter
+  if (filters.searchTerm && filters.searchTerm.trim()) {
+    const searchTerm = filters.searchTerm.toLowerCase().trim();
+    filtered = filtered.filter(course => {
+      const searchableText = [
+        course.title,
+        course.description,
+        course.category,
+        course.series,
+        ...(course.metadata?.tags || [])
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      
+      return searchableText.includes(searchTerm);
+    });
+  }
+
+  return filtered;
+}
+
+function filterBundles(
+  bundles: Bundle[],
+  filters: UIState['bundleFilters'],
+  courses: Course[]
+): Bundle[] {
+  let filtered = [...bundles];
+
+  // Apply bundle type filter
+  if (filters.bundle_type) {
+    filtered = filtered.filter(bundle => bundle.bundle_type === filters.bundle_type);
+  }
+
+  // Apply category filter (based on contained courses)
+  if (filters.category) {
+    const courseMap = new Map<string, Course>();
+    courses.forEach(course => courseMap.set(course.id, course));
+
+    filtered = filtered.filter(bundle => {
+      return bundle.course_ids.some(courseId => {
+        const course = courseMap.get(courseId);
+        return course?.category === filters.category;
+      });
+    });
+  }
+
+  // Apply search filter
+  if (filters.searchTerm && filters.searchTerm.trim()) {
+    const searchTerm = filters.searchTerm.toLowerCase().trim();
+    const courseMap = new Map<string, Course>();
+    courses.forEach(course => courseMap.set(course.id, course));
+
+    filtered = filtered.filter(bundle => {
+      const searchableText = [
+        bundle.title,
+        bundle.description,
+        bundle.bundle_type,
+        // Include course titles for search
+        ...bundle.course_ids.map(courseId => courseMap.get(courseId)?.title).filter(Boolean)
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      
+      return searchableText.includes(searchTerm);
+    });
+  }
+
+  return filtered;
+}
+
+// ========================================
+// UI STORE - UPDATED FOR SSG
 // ========================================
 
 export const useUIStore = create<UIState>()(
@@ -234,7 +371,7 @@ export const useUIStore = create<UIState>()(
     // INITIAL STATE
     // ========================================
     
-    // Drawer & Modal States
+    // Drawer & Modal States (unchanged)
     isCartDrawerOpen: false,
     cartDrawerAnimation: 'idle',
     
@@ -249,19 +386,13 @@ export const useUIStore = create<UIState>()(
     
     modalData: {},
     
-    // Navigation & Page State
+    // Navigation & Page State (unchanged)
     currentPage: 'home',
     previousPage: null,
     isMobileMenuOpen: false,
     
-    pageLoading: {
-      courses: false,
-      bundles: false,
-      purchases: false,
-      enrollments: false,
-    },
-    
-    // Filter States
+    // Simplified filtering state
+    preloadedData: initialPreloadedData,
     courseFilters: initialCourseFilters,
     bundleFilters: initialBundleFilters,
     activeCourseTab: 'courses',
@@ -269,16 +400,22 @@ export const useUIStore = create<UIState>()(
     isFilterPanelOpen: false,
     isFilterPanelExpanded: false,
     
-    // Loading & Error States
+    // User-specific loading states only
+    userOperationLoading: {
+      cart: false,
+      purchases: false,
+      enrollments: false,
+      profile: false,
+    },
+    
     globalLoading: {
       message: '',
       isLoading: false,
     },
     
-    toastQueue: [],
     errors: {},
     
-    // User Interface Preferences
+    // User Interface Preferences (unchanged)
     theme: 'light',
     sidebarCollapsed: false,
     reducedMotion: false,
@@ -291,18 +428,16 @@ export const useUIStore = create<UIState>()(
     },
 
     // ========================================
-    // DRAWER & MODAL ACTIONS
+    // DRAWER & MODAL ACTIONS (Unchanged)
     // ========================================
 
     openCartDrawer: () => {
       set({ 
         isCartDrawerOpen: true, 
         cartDrawerAnimation: 'entering',
-        // Close mobile menu if open
         isMobileMenuOpen: false,
       });
       
-      // Reset animation state after transition
       setTimeout(() => {
         set({ cartDrawerAnimation: 'idle' });
       }, 300);
@@ -335,9 +470,7 @@ export const useUIStore = create<UIState>()(
           [modalType]: true,
         },
         modalData: data ? { ...state.modalData, ...data } : state.modalData,
-        // Close mobile menu if open
         isMobileMenuOpen: false,
-        // Close cart drawer if open and opening a modal
         isCartDrawerOpen: modalType === 'purchaseConfirmModal' ? false : state.isCartDrawerOpen,
       }));
     },
@@ -352,7 +485,7 @@ export const useUIStore = create<UIState>()(
     },
 
     closeAllModals: () => {
-      set(state => ({
+      set({
         modals: {
           authModal: false,
           purchaseConfirmModal: false,
@@ -362,7 +495,7 @@ export const useUIStore = create<UIState>()(
           helpModal: false,
         },
         modalData: {},
-      }));
+      });
     },
 
     setModalData: (data) => {
@@ -374,7 +507,6 @@ export const useUIStore = create<UIState>()(
     toggleMobileMenu: () => {
       set(state => ({
         isMobileMenuOpen: !state.isMobileMenuOpen,
-        // Close cart drawer if opening mobile menu
         isCartDrawerOpen: !state.isMobileMenuOpen ? false : state.isCartDrawerOpen,
       }));
     },
@@ -384,7 +516,38 @@ export const useUIStore = create<UIState>()(
     },
 
     // ========================================
-    // FILTER ACTIONS
+    // PRE-LOADED DATA ACTIONS
+    // ========================================
+
+    setPreloadedData: (data) => {
+      set(state => ({
+        preloadedData: {
+          ...state.preloadedData,
+          ...data,
+        },
+      }));
+    },
+
+    setDataLoaded: (loaded) => {
+      set(state => ({
+        preloadedData: {
+          ...state.preloadedData,
+          isDataLoaded: loaded,
+        },
+      }));
+    },
+
+    setDataLoadError: (error) => {
+      set(state => ({
+        preloadedData: {
+          ...state.preloadedData,
+          dataLoadError: error,
+        },
+      }));
+    },
+
+    // ========================================
+    // CLIENT-SIDE FILTER ACTIONS (Simplified - No API calls)
     // ========================================
 
     setCourseFilter: (key, value) => {
@@ -457,14 +620,13 @@ export const useUIStore = create<UIState>()(
     },
 
     // ========================================
-    // PAGE & LOADING ACTIONS
+    // PAGE & LOADING ACTIONS (Simplified)
     // ========================================
 
     setCurrentPage: (page) => {
       set(state => ({
         previousPage: state.currentPage,
         currentPage: page,
-        // Close mobile menu on page change
         isMobileMenuOpen: false,
       }));
     },
@@ -479,11 +641,11 @@ export const useUIStore = create<UIState>()(
       }
     },
 
-    setPageLoading: (page, loading) => {
+    setUserOperationLoading: (operation, loading) => {
       set(state => ({
-        pageLoading: {
-          ...state.pageLoading,
-          [page]: loading,
+        userOperationLoading: {
+          ...state.userOperationLoading,
+          [operation]: loading,
         },
       }));
     },
@@ -519,20 +681,18 @@ export const useUIStore = create<UIState>()(
     },
 
     // ========================================
-    // PREFERENCE ACTIONS
+    // PREFERENCE ACTIONS (Unchanged)
     // ========================================
 
     setTheme: (theme) => {
       set({ theme });
       
-      // Apply theme to document
       if (typeof document !== 'undefined') {
         if (theme === 'dark') {
           document.documentElement.classList.add('dark');
         } else if (theme === 'light') {
           document.documentElement.classList.remove('dark');
         } else {
-          // System preference
           const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
           if (prefersDark) {
             document.documentElement.classList.add('dark');
@@ -554,7 +714,6 @@ export const useUIStore = create<UIState>()(
     setReducedMotion: (reduced) => {
       set({ reducedMotion: reduced });
       
-      // Apply reduced motion preference
       if (typeof document !== 'undefined') {
         if (reduced) {
           document.documentElement.style.setProperty('--animation-duration', '0ms');
@@ -567,7 +726,6 @@ export const useUIStore = create<UIState>()(
     setFontSize: (size) => {
       set({ fontSize: size });
       
-      // Apply font size
       if (typeof document !== 'undefined') {
         document.documentElement.classList.remove('text-sm', 'text-md', 'text-lg');
         document.documentElement.classList.add(`text-${size}`);
@@ -593,8 +751,18 @@ export const useUIStore = create<UIState>()(
     },
 
     // ========================================
-    // UTILITIES
+    // CLIENT-SIDE FILTERING UTILITIES
     // ========================================
+
+    getFilteredCourses: () => {
+      const { preloadedData, courseFilters } = get();
+      return filterCourses(preloadedData.courses, courseFilters);
+    },
+
+    getFilteredBundles: () => {
+      const { preloadedData, bundleFilters } = get();
+      return filterBundles(preloadedData.bundles, bundleFilters, preloadedData.courses);
+    },
 
     hasActiveFilters: (type) => {
       const state = get();
@@ -630,11 +798,21 @@ export const useUIStore = create<UIState>()(
       const errors = get().errors;
       return Object.values(errors).some(error => error !== null && error !== undefined);
     },
+
+    getAvailableSeriesForCategory: (category) => {
+      const { preloadedData } = get();
+      return preloadedData.availableSeriesByCategory[category] || [];
+    },
+
+    getAvailableTagsForCategory: (category) => {
+      const { preloadedData } = get();
+      return preloadedData.availableTagsByCategory[category] || [];
+    },
   }))
 );
 
 // ========================================
-// CONVENIENCE HOOKS
+// CONVENIENCE HOOKS (Updated)
 // ========================================
 
 export const useCartDrawer = () => {
@@ -661,6 +839,7 @@ export const useModalState = () => {
   };
 };
 
+// Updated for client-side filtering
 export const useFilters = (type: 'courses' | 'bundles') => {
   const store = useUIStore();
   
@@ -672,6 +851,9 @@ export const useFilters = (type: 'courses' | 'bundles') => {
       setSearchTerm: store.setCourseSearchTerm,
       hasActiveFilters: store.hasActiveFilters('courses'),
       activeFilterCount: store.getActiveFilterCount('courses'),
+      filteredData: store.getFilteredCourses(), // Pre-filtered data
+      availableSeries: store.getAvailableSeriesForCategory(store.activeCategoryTab),
+      availableTags: store.getAvailableTagsForCategory(store.activeCategoryTab),
     };
   } else {
     return {
@@ -681,6 +863,8 @@ export const useFilters = (type: 'courses' | 'bundles') => {
       setSearchTerm: store.setBundleSearchTerm,
       hasActiveFilters: store.hasActiveFilters('bundles'),
       activeFilterCount: store.getActiveFilterCount('bundles'),
+      filteredData: store.getFilteredBundles(), // Pre-filtered data
+      availableBundleTypes: store.preloadedData.availableBundleTypes,
     };
   }
 };
@@ -692,8 +876,8 @@ export const usePageState = () => {
     previousPage: store.previousPage,
     setCurrentPage: store.setCurrentPage,
     goBack: store.goBack,
-    pageLoading: store.pageLoading,
-    setPageLoading: store.setPageLoading,
+    userOperationLoading: store.userOperationLoading, // Simplified loading
+    setUserOperationLoading: store.setUserOperationLoading,
     globalLoading: store.globalLoading,
     setGlobalLoading: store.setGlobalLoading,
   };
@@ -725,5 +909,18 @@ export const usePreferences = () => {
     features: store.features,
     toggleFeature: store.toggleFeature,
     setFeature: store.setFeature,
+  };
+};
+
+// New hook for pre-loaded data management
+export const usePreloadedData = () => {
+  const store = useUIStore();
+  return {
+    data: store.preloadedData,
+    setData: store.setPreloadedData,
+    setLoaded: store.setDataLoaded,
+    setError: store.setDataLoadError,
+    isLoaded: store.preloadedData.isDataLoaded,
+    hasError: !!store.preloadedData.dataLoadError,
   };
 };

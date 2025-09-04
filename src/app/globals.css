@@ -96,6 +96,7 @@ body {
   color: var(--foreground);
   /* Add subtle warm gradient background */
   background-image: radial-gradient(circle at 50% 0%, rgba(254, 243, 199, 0.3) 0%, transparent 50%);
+  margin-top: 30px; /* Adjust if there's a fixed header */
 }
 
 main {
