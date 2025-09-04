@@ -521,3 +521,4 @@ export interface UseUserReturn {
   isLoadingSupabaseUser: boolean;
   supabaseError: string | null;
 }
+

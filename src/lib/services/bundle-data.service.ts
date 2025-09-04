@@ -1,6 +1,11 @@
 import { createPublicClient } from '@/lib/supabase/server';
-import { Bundle, BundleFilters, BundleWithCourses } from '@/lib/types';
+import { Bundle, BundleWithCourses, CourseCategory } from '@/lib/types';
 import { CourseDataService } from './course-data.service';
+
+// Simplified Bundle Filters - Only category-based
+export interface SimplifiedBundleFilters {
+  category?: CourseCategory; // 'EB1A' | 'EB2-NIW' | 'Other'
+}
 
 export class BundleDataService {
   private courseService: CourseDataService;
@@ -14,7 +19,10 @@ export class BundleDataService {
     return createPublicClient();
   }
 
-  async getAllBundles(filters?: BundleFilters): Promise<Bundle[]> {
+  /**
+   * Get all bundles with simplified category-based filtering
+   */
+  async getAllBundles(filters?: SimplifiedBundleFilters): Promise<Bundle[]> {
     const supabase = this.getSupabaseClient();
     let query = supabase
       .from('bundles')
@@ -22,25 +30,10 @@ export class BundleDataService {
       .eq('is_active', true)
       .order('created_at', { ascending: false });
 
-    // Apply filters
-    if (filters?.bundle_type) {
-      query = query.eq('bundle_type', filters.bundle_type);
-    }
-
-    if (filters?.featured !== undefined) {
-      query = query.eq('metadata->>featured', filters.featured);
-    }
-
-    if (filters?.minPrice) {
-      query = query.gte('pricing->price', filters.minPrice);
-    }
-
-    if (filters?.maxPrice) {
-      query = query.lte('pricing->price', filters.maxPrice);
-    }
-
-    if (filters?.courseCount) {
-      query = query.eq('metadata->>courses_count', filters.courseCount);
+    // Only apply category filter if provided
+    if (filters?.category) {
+      // Assuming bundle_type maps to category (e.g., 'eb1a', 'eb2-niw', 'other')
+      query = query.eq('bundle_type', filters.category.toLowerCase());
     }
 
     const { data, error } = await query;
@@ -51,6 +44,13 @@ export class BundleDataService {
     }
 
     return data || [];
+  }
+
+  /**
+   * Get bundles by category - main filtering method
+   */
+  async getBundlesByCategory(category: CourseCategory): Promise<Bundle[]> {
+    return this.getAllBundles({ category });
   }
 
   async getBundleBySlug(slug: string): Promise<Bundle | null> {
@@ -117,14 +117,9 @@ export class BundleDataService {
     };
   }
 
-  async getFeaturedBundles(): Promise<Bundle[]> {
-    return this.getAllBundles({ featured: true });
-  }
-
-  async getBundlesByType(bundleType: string): Promise<Bundle[]> {
-    return this.getAllBundles({ bundle_type: bundleType as any });
-  }
-
+  /**
+   * Get bundles containing a specific course - useful for cross-selling
+   */
   async getBundlesContainingCourse(courseId: string): Promise<Bundle[]> {
     const supabase = this.getSupabaseClient();
     const { data, error } = await supabase
@@ -142,14 +137,24 @@ export class BundleDataService {
     return data || [];
   }
 
-  async searchBundles(searchTerm: string): Promise<Bundle[]> {
+  /**
+   * Simple search within bundles - title and description only
+   */
+  async searchBundles(searchTerm: string, category?: CourseCategory): Promise<Bundle[]> {
     const supabase = this.getSupabaseClient();
-    const { data, error } = await supabase
+    let query = supabase
       .from('bundles')
       .select('*')
       .eq('is_active', true)
       .or(`title.ilike.%${searchTerm}%,description.ilike.%${searchTerm}%`)
       .order('created_at', { ascending: false });
+
+    // Optionally filter by category during search
+    if (category) {
+      query = query.eq('bundle_type', category.toLowerCase());
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error searching bundles:', error);
@@ -157,6 +162,44 @@ export class BundleDataService {
     }
 
     return data || [];
+  }
+
+  /**
+   * Get available categories from bundles - for dynamic navigation
+   */
+  async getAvailableCategories(): Promise<CourseCategory[]> {
+    const supabase = this.getSupabaseClient();
+    const { data, error } = await supabase
+      .from('bundles')
+      .select('bundle_type')
+      .eq('is_active', true);
+
+    if (error) {
+      console.error('Error fetching bundle categories:', error);
+      throw error;
+    }
+
+    // Convert bundle_type to CourseCategory and remove duplicates
+    const categories = Array.from(
+      new Set(
+        data?.map(bundle => {
+          const bundleType = bundle.bundle_type;
+          // Map bundle_type to CourseCategory
+          switch (bundleType.toLowerCase()) {
+            case 'eb1a':
+              return 'EB1A';
+            case 'eb2-niw':
+              return 'EB2-NIW';
+            case 'other':
+              return 'Other';
+            default:
+              return 'Other';
+          }
+        }) || []
+      )
+    );
+
+    return categories as CourseCategory[];
   }
 
   /**
@@ -183,5 +226,137 @@ export class BundleDataService {
       savings,
       savingsPercentage: Math.round(savingsPercentage),
     };
+  }
+
+  // ========================================
+  // SSG-COMPATIBLE STATIC METHODS
+  // ========================================
+
+  /**
+   * Static method for build-time bundle fetching (SSG)
+   */
+  static async getStaticBundles(): Promise<Bundle[]> {
+    const supabase = createPublicClient();
+    const { data, error } = await supabase
+      .from('bundles')
+      .select('*')
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching static bundles:', error);
+      throw error;
+    }
+
+    return data || [];
+  }
+
+  /**
+   * Static method to get all bundle slugs for generateStaticParams
+   */
+  static async getStaticBundleSlugs(): Promise<string[]> {
+    const supabase = createPublicClient();
+    const { data, error } = await supabase
+      .from('bundles')
+      .select('slug')
+      .eq('is_active', true);
+
+    if (error) {
+      console.error('Error fetching static bundle slugs:', error);
+      throw error;
+    }
+
+    return data?.map(bundle => bundle.slug) || [];
+  }
+
+  /**
+   * Static method to get available categories for navigation generation
+   */
+  static async getStaticCategories(): Promise<CourseCategory[]> {
+    const supabase = createPublicClient();
+    const { data, error } = await supabase
+      .from('bundles')
+      .select('bundle_type')
+      .eq('is_active', true);
+
+    if (error) {
+      console.error('Error fetching static categories:', error);
+      return ['EB1A', 'EB2-NIW', 'Other']; // Fallback
+    }
+
+    // Convert and deduplicate categories
+    const categories = Array.from(
+      new Set(
+        data?.map(bundle => {
+          const bundleType = bundle.bundle_type;
+          switch (bundleType.toLowerCase()) {
+            case 'eb1a':
+              return 'EB1A';
+            case 'eb2-niw':
+              return 'EB2-NIW';
+            case 'other':
+              return 'Other';
+            default:
+              return 'Other';
+          }
+        }) || []
+      )
+    );
+
+    return categories as CourseCategory[];
+  }
+
+  /**
+   * Client-side filtering helper for pre-loaded bundles
+   */
+  static filterBundlesClientSide(
+    bundles: Bundle[],
+    filters: {
+      category?: CourseCategory;
+      searchTerm?: string;
+    }
+  ): Bundle[] {
+    let filtered = bundles;
+
+    // Category filter
+    if (filters.category) {
+      filtered = filtered.filter(bundle => 
+        bundle.bundle_type.toLowerCase() === filters.category!.toLowerCase()
+      );
+    }
+
+    // Search filter
+    if (filters.searchTerm) {
+      const term = filters.searchTerm.toLowerCase();
+      filtered = filtered.filter(bundle =>
+        bundle.title.toLowerCase().includes(term) ||
+        (bundle.description?.toLowerCase().includes(term) ?? false)
+      );
+    }
+
+    return filtered;
+  }
+
+  /**
+   * Client-side sorting helper
+   */
+  static sortBundlesClientSide(
+    bundles: Bundle[],
+    sortBy: 'newest' | 'oldest' | 'title-asc' | 'title-desc' = 'newest'
+  ): Bundle[] {
+    const sorted = [...bundles];
+
+    switch (sortBy) {
+      case 'newest':
+        return sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      case 'oldest':
+        return sorted.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      case 'title-asc':
+        return sorted.sort((a, b) => a.title.localeCompare(b.title));
+      case 'title-desc':
+        return sorted.sort((a, b) => b.title.localeCompare(a.title));
+      default:
+        return sorted;
+    }
   }
 }
