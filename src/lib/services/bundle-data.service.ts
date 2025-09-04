@@ -336,27 +336,4 @@ export class BundleDataService {
 
     return filtered;
   }
-
-  /**
-   * Client-side sorting helper
-   */
-  static sortBundlesClientSide(
-    bundles: Bundle[],
-    sortBy: 'newest' | 'oldest' | 'title-asc' | 'title-desc' = 'newest'
-  ): Bundle[] {
-    const sorted = [...bundles];
-
-    switch (sortBy) {
-      case 'newest':
-        return sorted.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-      case 'oldest':
-        return sorted.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-      case 'title-asc':
-        return sorted.sort((a, b) => a.title.localeCompare(b.title));
-      case 'title-desc':
-        return sorted.sort((a, b) => b.title.localeCompare(a.title));
-      default:
-        return sorted;
-    }
-  }
 }

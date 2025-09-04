@@ -1,0 +1,217 @@
+/ ========================================
+// FILE: src/lib/revalidation/revalidation-monitor.ts  
+// ✅ Monitoring and Health Check Functions
+// ========================================
+
+import { createServiceClient } from '@/lib/supabase/server';
+
+export interface RevalidationHealthCheck {
+  status: 'healthy' | 'warning' | 'critical';
+  checks: {
+    recentActivity: boolean;
+    errorRate: number;
+    avgDuration: number;
+    queueBacklog: number;
+  };
+  recommendations: string[];
+  lastUpdated: string;
+}
+
+/**
+ * Perform health check on revalidation system
+ */
+export async function performRevalidationHealthCheck(): Promise<RevalidationHealthCheck> {
+  const supabase = createServiceClient();
+  const recommendations: string[] = [];
+  
+  try {
+    // Check recent activity (last 6 hours)
+    const since = new Date();
+    since.setHours(since.getHours() - 6);
+    
+    const { data: recentLogs } = await supabase
+      .from('content_revalidation_logs')
+      .select('success, duration_ms, error_count')
+      .gte('created_at', since.toISOString());
+    
+    const recentActivity = (recentLogs?.length || 0) > 0;
+    const errorRate = recentLogs?.length 
+      ? (recentLogs.filter(log => !log.success).length / recentLogs.length) * 100
+      : 0;
+    const avgDuration = recentLogs?.length
+      ? recentLogs.reduce((sum, log) => sum + (log.duration_ms || 0), 0) / recentLogs.length
+      : 0;
+    
+    // Check queue backlog
+    const { data: queueItems } = await supabase
+      .from('content_revalidation_queue')
+      .select('id')
+      .eq('status', 'pending');
+    
+    const queueBacklog = queueItems?.length || 0;
+    
+    // Generate recommendations
+    if (errorRate > 20) {
+      recommendations.push('High error rate detected. Check revalidation logs for issues.');
+    }
+    
+    if (avgDuration > REVALIDATION_SETTINGS.WARNING_DURATION_MS) {
+      recommendations.push('Revalidation taking longer than expected. Consider optimization.');
+    }
+    
+    if (queueBacklog > 100) {
+      recommendations.push('Large queue backlog. Consider increasing processing capacity.');
+    }
+    
+    if (!recentActivity) {
+      recommendations.push('No recent revalidation activity. System may be inactive.');
+    }
+    
+    // Determine overall status
+    let status: 'healthy' | 'warning' | 'critical' = 'healthy';
+    
+    if (errorRate > 50 || avgDuration > REVALIDATION_SETTINGS.ERROR_DURATION_MS) {
+      status = 'critical';
+    } else if (errorRate > 20 || avgDuration > REVALIDATION_SETTINGS.WARNING_DURATION_MS || queueBacklog > 50) {
+      status = 'warning';
+    }
+    
+    return {
+      status,
+      checks: {
+        recentActivity,
+        errorRate: Math.round(errorRate),
+        avgDuration: Math.round(avgDuration),
+        queueBacklog,
+      },
+      recommendations,
+      lastUpdated: new Date().toISOString(),
+    };
+    
+  } catch (error) {
+    console.error('Health check failed:', error);
+    
+    return {
+      status: 'critical',
+      checks: {
+        recentActivity: false,
+        errorRate: 100,
+        avgDuration: 0,
+        queueBacklog: 0,
+      },
+      recommendations: ['Health check failed. System may be down.'],
+      lastUpdated: new Date().toISOString(),
+    };
+  }
+}
+
+/**
+ * Get revalidation performance metrics
+ */
+export async function getRevalidationMetrics(hours: number = 24): Promise<{
+  summary: {
+    total: number;
+    successful: number;
+    failed: number;
+    successRate: number;
+    avgDuration: number;
+  };
+  byType: Record<string, {
+    count: number;
+    successRate: number;
+    avgDuration: number;
+  }>;
+  timeline: Array<{
+    hour: string;
+    count: number;
+    errors: number;
+  }>;
+}> {
+  const supabase = createServiceClient();
+  
+  const since = new Date();
+  since.setHours(since.getHours() - hours);
+  
+  const { data: logs } = await supabase
+    .from('content_revalidation_logs')
+    .select('revalidation_type, success, duration_ms, created_at')
+    .gte('created_at', since.toISOString())
+    .order('created_at', { ascending: false });
+  
+  if (!logs || logs.length === 0) {
+    return {
+      summary: {
+        total: 0,
+        successful: 0, 
+        failed: 0,
+        successRate: 0,
+        avgDuration: 0,
+      },
+      byType: {},
+      timeline: [],
+    };
+  }
+  
+  // Calculate summary metrics
+  const total = logs.length;
+  const successful = logs.filter(log => log.success).length;
+  const failed = total - successful;
+  const successRate = Math.round((successful / total) * 100);
+  const avgDuration = Math.round(
+    logs.reduce((sum, log) => sum + (log.duration_ms || 0), 0) / total
+  );
+  
+  // Calculate metrics by type
+  const byType: Record<string, { count: number; successRate: number; avgDuration: number; }> = {};
+  
+  for (const log of logs) {
+    const type = log.revalidation_type;
+    if (!byType[type]) {
+      byType[type] = { count: 0, successRate: 0, avgDuration: 0 };
+    }
+    byType[type].count++;
+  }
+  
+  for (const type in byType) {
+    const typeLogs = logs.filter(log => log.revalidation_type === type);
+    const typeSuccessful = typeLogs.filter(log => log.success).length;
+    byType[type].successRate = Math.round((typeSuccessful / typeLogs.length) * 100);
+    byType[type].avgDuration = Math.round(
+      typeLogs.reduce((sum, log) => sum + (log.duration_ms || 0), 0) / typeLogs.length
+    );
+  }
+  
+  // Create timeline (hourly breakdown)
+  const timeline: Array<{ hour: string; count: number; errors: number; }> = [];
+  const hourlyData: Record<string, { count: number; errors: number; }> = {};
+  
+  for (const log of logs) {
+    const hour = new Date(log.created_at).toISOString().substring(0, 13) + ':00:00';
+    if (!hourlyData[hour]) {
+      hourlyData[hour] = { count: 0, errors: 0 };
+    }
+    hourlyData[hour].count++;
+    if (!log.success) {
+      hourlyData[hour].errors++;
+    }
+  }
+  
+  for (const [hour, data] of Object.entries(hourlyData)) {
+    timeline.push({ hour, ...data });
+  }
+  
+  timeline.sort((a, b) => a.hour.localeCompare(b.hour));
+  
+  return {
+    summary: {
+      total,
+      successful,
+      failed,
+      successRate,
+      avgDuration,
+    },
+    byType,
+    timeline,
+  };
+}
+
