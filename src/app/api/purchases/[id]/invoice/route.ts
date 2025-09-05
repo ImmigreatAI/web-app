@@ -8,20 +8,16 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-08-27.basil',
 });
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
+type RouteContext = { params: Promise<{ id: string }> };
 
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { userId } = await auth();
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { id: purchaseId } = params;
+    const { id: purchaseId } = await context.params;
 
     if (!purchaseId) {
       return NextResponse.json(

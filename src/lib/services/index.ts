@@ -1,10 +1,10 @@
 // Data Access Services
 export { CourseDataService } from './course-data.service';
 export { BundleDataService } from './bundle-data.service';
-export { PurchaseDataService } from './purchase-data.service';
+
 
 // Business Logic Services  
-export { EnrollmentService } from './enrollment.service';
+
 export { CartService } from './cart.service';
 
 // Service Types

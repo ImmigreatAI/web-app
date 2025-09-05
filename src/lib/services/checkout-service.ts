@@ -1,5 +1,5 @@
 import Stripe from 'stripe';
-import { createServiceClient } from '@/lib/supabase/server';
+import { BaseService } from './base.service';
 import {
   CartData,
   CartItem,
@@ -13,18 +13,10 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: '2025-08-27.basil',
 });
 
-// NOTE: We rely on the imported types (CheckoutSessionRequest, CheckoutSessionResponse, PurchaseItemsData).
-
-export class CheckoutService {
-  private supabaseAdmin;
-
-  constructor() {
-    this.supabaseAdmin = createServiceClient();
-  }
-
-  /**
-   * Create Stripe checkout session with proper metadata
-   */
+// NOTE: We rely on the imported types (CheckoutSessionRequest, export class CheckoutService extends BaseService {
+  // Remove old constructor - use BaseService
+export class CheckoutService extends BaseService {
+  // Remove old constructor - use BaseService
   async createCheckoutSession({
     clerkId,
     userEmail,
@@ -35,11 +27,9 @@ export class CheckoutService {
     cancelUrl,
   }: CheckoutSessionRequest): Promise<CheckoutSessionResponse> {
     try {
-      // Support both Buy Now (singleItem) and Cart checkout (cartData)
       let effectiveCart: CartData | undefined = cartData;
 
       if (!effectiveCart && singleItem) {
-        // Hydrate a minimal cart from the single item
         const hydratedItem: CartItem = {
           id: singleItem.id,
           type: singleItem.type,
@@ -62,33 +52,24 @@ export class CheckoutService {
         };
       }
 
-      // Validate cart data (handle possibly-undefined)
       if (!effectiveCart || !effectiveCart.items || effectiveCart.items.length === 0) {
         throw new Error('Cart is empty');
       }
 
-      if (!effectiveCart.summary) {
-        throw new Error('Cart summary is missing');
-      }
-
-      // Resolve final enrollment IDs and validity for course items
       const resolvedCart = await this.resolveFinalCartData(effectiveCart);
-
-      // Pre-create purchase record to get ID for tracking
       const purchaseType = this.determinePurchaseType(resolvedCart.items);
       const purchaseId = await this.createPendingPurchase(clerkId, resolvedCart, purchaseType);
-
-      // Prepare line items for Stripe
       const lineItems = this.createStripeLineItems(resolvedCart.items);
 
-      // Prepare metadata for the session
-      const metadata = this.attachMetadata({
-        clerkId,
-        purchaseId,
-        cartData: resolvedCart,
-      });
+      const metadata = {
+        clerk_id: clerkId,
+        purchase_id: purchaseId,
+        item_count: resolvedCart.items.length.toString(),
+        total_amount: (resolvedCart.summary?.total || 0).toString(),
+        byob_tier: resolvedCart.summary?.byob_tier || 'none',
+        purchase_type: purchaseType,
+      };
 
-      // Create Stripe checkout session
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: lineItems,
@@ -97,23 +78,21 @@ export class CheckoutService {
         cancel_url: cancelUrl,
         customer_email: userEmail,
         metadata,
-        // Additional session configuration
         allow_promotion_codes: true,
         billing_address_collection: 'required',
         shipping_address_collection: {
-          allowed_countries: ['US'], // Adjust as needed
+          allowed_countries: ['US'],
         },
         payment_intent_data: {
-          metadata, // Also add to payment intent
+          metadata,
         },
-        expires_at: Math.floor(Date.now() / 1000) + 30 * 60, // 30 minutes
+        expires_at: Math.floor(Date.now() / 1000) + 30 * 60,
       });
 
       if (!session.url) {
         throw new Error('Failed to create checkout session URL');
       }
 
-      // Update purchase record with session ID
       await this.updatePurchaseWithSessionId(purchaseId, session.id);
 
       return {
@@ -126,6 +105,7 @@ export class CheckoutService {
       throw error;
     }
   }
+
 
   /**
    * Resolve final validity and enrollment IDs for course items using BYOB rules
@@ -146,7 +126,7 @@ export class CheckoutService {
 
     // Fetch enrollment_ids for all course IDs
     const courseIds = courseItems.map((i) => i.id);
-    const { data: courses, error } = await this.supabaseAdmin
+    const { data: courses, error } = await this.supabase
       .from('courses')
       .select('id, enrollment_ids')
       .in('id', courseIds);
@@ -255,44 +235,35 @@ export class CheckoutService {
     cartData: CartData,
     purchaseType: string
   ): Promise<string> {
-    try {
-      const itemsPurchased = this.transformCartToItemsData(cartData);
+    const itemsPurchased = this.transformCartToItemsData(cartData);
 
-      const { data, error } = await this.supabaseAdmin
-        .from('user_purchases')
-        .insert({
-          clerk_id: clerkId,
-          purchase_type: purchaseType,
-          amount_paid: cartData.summary?.total || 0,
-          currency: 'USD',
-          items_purchased: itemsPurchased,
-          processing_status: 'pending',
-          queue_metadata: {
-            created_from: 'checkout_session',
-            checkout_type: purchaseType,
-            cart_item_count: cartData.items.length,
-          },
-        })
-        .select('id')
-        .single();
+    const { data, error } = await this.supabase
+      .from('user_purchases')
+      .insert({
+        clerk_id: clerkId,
+        purchase_type: purchaseType,
+        amount_paid: cartData.summary?.total || 0,
+        currency: 'USD',
+        items_purchased: itemsPurchased,
+        processing_status: 'pending',
+        queue_metadata: {
+          created_from: 'checkout_session',
+          checkout_type: purchaseType,
+          cart_item_count: cartData.items.length,
+        },
+      })
+      .select('id')
+      .single();
 
-      if (error) {
-        throw error;
-      }
-
-      return data.id;
-    } catch (error) {
-      console.error('Error creating pending purchase:', error);
-      throw error;
-    }
+    if (error) throw error;
+    return data.id;
   }
-
   /**
    * Update purchase with Stripe session ID after session creation
    */
   private async updatePurchaseWithSessionId(purchaseId: string, sessionId: string): Promise<void> {
     try {
-      const { error } = await this.supabaseAdmin
+      const { error } = await this.supabase
         .from('user_purchases')
         .update({
           stripe_session_id: sessionId,
@@ -319,7 +290,7 @@ export class CheckoutService {
     try {
       const paymentIntent = session.payment_intent as Stripe.PaymentIntent;
 
-      const { error } = await this.supabaseAdmin
+      const { error } = await this.supabase
         .from('user_purchases')
         .update({
           stripe_payment_intent_id: paymentIntent?.id,
@@ -457,7 +428,7 @@ export class CheckoutService {
    */
   async getPurchaseById(purchaseId: string): Promise<any> {
     try {
-      const { data, error } = await this.supabaseAdmin
+      const { data, error } = await this.supabase
         .from('user_purchases')
         .select('*')
         .eq('id', purchaseId)
@@ -498,7 +469,7 @@ export class CheckoutService {
         updateData.processing_completed_at = new Date().toISOString();
       }
 
-      const { error } = await this.supabaseAdmin.from('user_purchases').update(updateData).eq('id', purchaseId);
+      const { error } = await this.supabase.from('user_purchases').update(updateData).eq('id', purchaseId);
 
       if (error) {
         throw error;
@@ -514,7 +485,7 @@ export class CheckoutService {
    */
   async getPendingPurchases(): Promise<any[]> {
     try {
-      const { data, error } = await this.supabaseAdmin
+      const { data, error } = await this.supabase
         .from('user_purchases')
         .select('*')
         .eq('processing_status', 'pending')

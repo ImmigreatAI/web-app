@@ -4,11 +4,7 @@ import { auth } from '@clerk/nextjs/server';
 import { CourseDataService } from '@/lib/services/course-data.service';
 import { PurchaseTrackingService } from '@/lib/services/purchase-tracking-service';
 
-interface RouteParams {
-  params: {
-    slug: string;
-  };
-}
+type RouteContext = { params: Promise<{ slug: string }> };
 
 /**
  * REFINED API: Returns ONLY user-specific access data for a course
@@ -16,10 +12,10 @@ interface RouteParams {
  * 
  * GET /api/courses/[slug] - Get user access information for specific course
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { userId } = await auth();
-    const { slug } = params;
+    const { slug } = await context.params;
 
     if (!slug) {
       return NextResponse.json(
@@ -29,7 +25,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get basic course info to validate course exists and get course ID
-    const courseService = new CourseDataService(false); // Public client for basic lookup
+    const courseService = new CourseDataService(); // Public client for basic lookup
     const course = await courseService.getCourseBySlug(slug);
 
     if (!course) {
@@ -75,12 +71,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // Get additional context if user owns course through bundle
-    let bundleInfo = null;
+    let bundleInfo: any = null;
     if (accessInfo.has_access && accessInfo.access_type === 'bundle' && accessInfo.bundle_id) {
       try {
         // Get bundle enrollment details
         const enrollments = await purchaseService.getUserActiveEnrollments(userId);
-        const bundleEnrollment = enrollments.find(e => 
+        const bundleEnrollment = enrollments.find((e) => 
           e.enrollment_type === 'bundle' && e.item_id === accessInfo.bundle_id
         );
         
@@ -135,10 +131,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * POST /api/courses/[slug] - Advanced access checking with cart integration
  * Body: { check_cart_conflicts?: boolean, intended_action?: 'add_to_cart' | 'buy_now' }
  */
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function POST(request: NextRequest, context: RouteContext) {
   try {
     const { userId } = await auth();
-    const { slug } = params;
+    const { slug } = await context.params;
 
     if (!userId) {
       return NextResponse.json(
@@ -158,7 +154,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const { check_cart_conflicts = false, intended_action } = body;
 
     // Get course info
-    const courseService = new CourseDataService(false);
+    const courseService = new CourseDataService();
     const course = await courseService.getCourseBySlug(slug);
 
     if (!course) {

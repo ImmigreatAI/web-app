@@ -1,7 +1,7 @@
 // src/app/api/auth/user-profile/route.ts - User profile management
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { createClient as createServerClient } from '@/lib/supabase/server';
+import { getServiceClient } from '@/lib/supabase/server';
 import { UserProfileUpdate } from '@/lib/types';
 
 /**
@@ -14,7 +14,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const supabase = await createServerClient();
+    const supabase = getServiceClient();
     const { data: user, error } = await supabase
       .from('users')
       .select('*')
@@ -81,7 +81,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    const supabase = await createServerClient();
+    const supabase = getServiceClient();
     const { data: updatedUser, error } = await supabase
       .from('users')
       .update(updateData)

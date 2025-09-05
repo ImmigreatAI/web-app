@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     const includeEnrollmentStatus = searchParams.get('include_enrollment_status') === 'true';
 
     // Create course service (authenticated if user is signed in)
-    const courseService = new CourseDataService(!!userId);
+    const courseService = new CourseDataService();
     
     // Get courses based on filters
     let courses;
