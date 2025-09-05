@@ -10,7 +10,7 @@ import {
 } from '@/lib/types';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-06-20',
+  apiVersion: '2025-08-27.basil',
 });
 
 // NOTE: We rely on the imported types (CheckoutSessionRequest, CheckoutSessionResponse, PurchaseItemsData).

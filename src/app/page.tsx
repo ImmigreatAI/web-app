@@ -1,103 +1,143 @@
-import Image from "next/image";
+// src/app/page.tsx (Updated)
+import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="container mx-auto px-4 py-12">
+      {/* Hero Section */}
+      <div className="text-center mb-16">
+        <h1 className="text-5xl font-bold text-gray-800 mb-4">
+          Master Your Immigration Journey
+        </h1>
+        <p className="text-xl text-gray-600 mb-8 max-w-2xl mx-auto">
+          Expert-guided courses for EB1A, EB2-NIW and more. Get the knowledge and tools you need to succeed.
+        </p>
+        <div className="space-x-4">
+          <Link 
+            href="/courses" 
+            className="bg-amber-500 text-white px-8 py-3 rounded-lg text-lg font-semibold hover:bg-amber-600 transition-colors"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            Browse Courses
+          </Link>
+          <Link 
+            href="/bundles" 
+            className="bg-green-500 text-white px-8 py-3 rounded-lg text-lg font-semibold hover:bg-green-600 transition-colors"
           >
-            Read our docs
-          </a>
+            View Bundles
+          </Link>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </div>
+
+      {/* Quick Navigation */}
+      <div className="grid md:grid-cols-3 gap-8 mb-16">
+        <div className="text-center p-6 border rounded-lg hover:shadow-lg transition-shadow">
+          <h3 className="text-xl font-semibold mb-3 text-blue-600">EB1A Courses</h3>
+          <p className="text-gray-600 mb-4">Extraordinary Ability petition courses</p>
+          <Link href="/courses?tab=EB1A" className="text-blue-600 hover:underline font-medium">
+            Explore EB1A →
+          </Link>
+        </div>
+        
+        <div className="text-center p-6 border rounded-lg hover:shadow-lg transition-shadow">
+          <h3 className="text-xl font-semibold mb-3 text-purple-600">EB2-NIW Courses</h3>
+          <p className="text-gray-600 mb-4">National Interest Waiver courses</p>
+          <Link href="/courses?tab=EB2-NIW" className="text-purple-600 hover:underline font-medium">
+            Explore EB2-NIW →
+          </Link>
+        </div>
+        
+        <div className="text-center p-6 border rounded-lg hover:shadow-lg transition-shadow">
+          <h3 className="text-xl font-semibold mb-3 text-green-600">Course Bundles</h3>
+          <p className="text-gray-600 mb-4">Complete learning paths with savings</p>
+          <Link href="/bundles" className="text-green-600 hover:underline font-medium">
+            View Bundles →
+          </Link>
+        </div>
+      </div>
+
+      {/* Test Links Section */}
+      <div className="bg-gray-50 p-8 rounded-lg">
+        <h2 className="text-2xl font-bold mb-6">Test the Implementation</h2>
+        
+        <div className="grid md:grid-cols-2 gap-8">
+          <div>
+            <h3 className="text-lg font-semibold mb-3 text-blue-600">Course Routes</h3>
+            <ul className="space-y-2">
+              <li>
+                <Link href="/courses" className="text-blue-600 hover:underline">
+                  📚 Main Course Hub
+                </Link>
+              </li>
+              <li>
+                <Link href="/courses?tab=EB1A" className="text-blue-600 hover:underline">
+                  🎯 EB1A Tab Filter
+                </Link>
+              </li>
+              <li>
+                <Link href="/courses/eb1a" className="text-blue-600 hover:underline">
+                  📂 EB1A Category Page
+                </Link>
+              </li>
+              <li>
+                <Link href="/courses/eb1a?tag=awards" className="text-blue-600 hover:underline">
+                  🏷️ EB1A with Awards Tag
+                </Link>
+              </li>
+              <li>
+                <Link href="/courses/eb1a/fundamental" className="text-blue-600 hover:underline">
+                  📖 EB1A Fundamental Series
+                </Link>
+              </li>
+              <li className="text-sm text-gray-600">
+                Individual course: /courses/eb1a/fundamental/[course-slug]
+              </li>
+            </ul>
+          </div>
+          
+          <div>
+            <h3 className="text-lg font-semibold mb-3 text-green-600">Bundle Routes</h3>
+            <ul className="space-y-2">
+              <li>
+                <Link href="/bundles" className="text-green-600 hover:underline">
+                  📦 Main Bundle Hub
+                </Link>
+              </li>
+              <li>
+                <Link href="/bundles?type=curated" className="text-green-600 hover:underline">
+                  ✨ Curated Bundles
+                </Link>
+              </li>
+              <li>
+                <Link href="/bundles?type=premium" className="text-green-600 hover:underline">
+                  💎 Premium Bundles
+                </Link>
+              </li>
+              <li>
+                <Link href="/bundles?search=eb1a" className="text-green-600 hover:underline">
+                  🔍 Bundle Search
+                </Link>
+              </li>
+              <li className="text-sm text-gray-600">
+                Individual bundle: /bundles/[bundle-slug]
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div className="mt-8 p-4 bg-yellow-50 rounded border-l-4 border-yellow-400">
+          <h4 className="font-semibold text-yellow-800 mb-2">📝 Implementation Status</h4>
+          <ul className="text-sm text-yellow-700 space-y-1">
+            <li>✅ All route structures implemented</li>
+            <li>✅ API data fetching working</li>
+            <li>✅ Query parameter handling</li>
+            <li>✅ Search functionality</li>
+            <li>✅ Category/tag filtering</li>
+            <li>✅ Error handling & loading states</li>
+            <li>✅ Debug information displayed</li>
+            <li>⚠️ No styling applied (basic functionality only)</li>
+          </ul>
+        </div>
+      </div>
     </div>
   );
 }

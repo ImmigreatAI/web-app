@@ -72,10 +72,44 @@ export const isValidProcessingStatus = (value: string): value is ProcessingStatu
 // Track type system changes
 // ========================================
 
-export const TYPE_SYSTEM_VERSION = '2.0.0'; // Updated for SSG implementation
-export const LAST_UPDATED = '2024-12-19';
-export const BREAKING_CHANGES = [
-  'Modularized type system into separate files',
-  'Added SSG-specific types for static generation', 
-  'Enhanced type safety with guards and utilities'
-];
+// export const TYPE_SYSTEM_VERSION = '2.0.0'; // Updated for SSG implementation
+// export const LAST_UPDATED = '2024-12-19';
+// export const BREAKING_CHANGES = [
+//   'Modularized type system into separate files',
+//   'Added SSG-specific types for static generation', 
+//   'Enhanced type safety with guards and utilities'
+// ];
+
+
+/**
+ * Simple revalidation result
+ */
+export interface RevalidationResult {
+  success: boolean;
+  message: string;
+  pathsRevalidated: string[];
+}
+
+/**
+ * Revalidation request types
+ */
+export type RevalidationType = 'all' | 'courses' | 'bundles' | 'course' | 'bundle';
+
+/**
+ * Manual revalidation request body
+ */
+export interface RevalidationRequest {
+  type: RevalidationType;
+  slug?: string; // Required for 'course' and 'bundle' types
+}
+
+/**
+ * API response for revalidation
+ */
+export interface RevalidationApiResponse {
+  success: boolean;
+  data?: RevalidationResult | RevalidationResult[];
+  error?: string;
+  message?: string;
+  timestamp: string;
+}

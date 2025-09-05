@@ -182,7 +182,8 @@ export const useUserDashboard = () => {
 export const useFilteredContent = (type: 'courses' | 'bundles') => {
   const uiState = useUIStore();
   const filters = type === 'courses' ? uiState.courseFilters : uiState.bundleFilters;
-  const isLoading = uiState.pageLoading[type];
+  // Updated: use preloaded data loading state (SSG-friendly)
+  const isLoading = !uiState.preloadedData.isDataLoaded;
   
   return {
     filters,
@@ -366,7 +367,7 @@ export type {
 // STORE DEBUGGING (Development Only)
 // ========================================
 
-if (process.env.NODE_ENV === 'development') {
+if (typeof window !== 'undefined' && process.env.NODE_ENV === 'development') {
   // Add store debugging capabilities
   (window as any).immigreatStores = {
     cart: useCartStore.getState,
